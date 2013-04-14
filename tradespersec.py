@@ -106,14 +106,14 @@ def main():
 	for key in tradecount:
 		if tradecount[key] >= maxtps-PLUSMIN:
 			limcount += 1
-			timestamps.append(int(key))
+			timestamps.append(key)
 
 	print "Number of times a rate of at least %d trades per second was reached: %d" % (maxtps-PLUSMIN, limcount)
 
 	print "This happened the following times:"
 
 	for timestamp in sorted(timestamps):
-		print time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(timestamp))	
+		print "%s UTC (%d trades per second)" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(timestamp))), tradecount[timestamp])
 
 	print "Average trades per second for the entire period specified: %.2f" % (float(len(data.split("\n")))/(endtime-starttime))	
 
