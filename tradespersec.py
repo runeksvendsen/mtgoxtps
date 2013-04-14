@@ -15,9 +15,10 @@ class Trade():
 	def __init__(self, tradestring):
 		#format: "1365670789,163.400000000000,5.867343130000"
 		self.tradestring = tradestring
-		self.timestamp = tradestring.split(",")[0]
-		self.price = tradestring.split(",")[1]
-		self.volume = tradestring.split(",")[2]
+		split = tradestring.split(",")
+		self.timestamp = split[0]
+		self.price = split[1]
+		self.volume = split[2]
 
 	def __str__(self):
 		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int('1365670789'))), self.price, self.volume)
