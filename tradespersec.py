@@ -35,14 +35,13 @@ class BitcoinchartsTrade():
 		return int(self.timestamp)
 
 class MtgoxTrade():
-	def __init__(self, tradestring):
+	def __init__(self, tradedict):
 		#format: {"date":1365881612,"price":"105","amount":"0.15","price_int":"10500000","amount_int":"15000000","tid":"1365881612029984",
 		#			"price_currency":"USD","item":"BTC","trade_type":"bid","primary":"Y","properties":"market"}
-		self.tradestring = tradestring
-		data = json.loads(tradestring)
-		self.timestamp = str(data['date'])
-		self.price = str(data['price'])
-		self.volume = str(data['amount'])
+		self.tradedict = tradedict
+		self.timestamp = str(tradedict['date'])
+		self.price = str(tradedict['price'])
+		self.volume = str(tradedict['amount'])
 
 	def __str__(self):
 		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume)
@@ -60,7 +59,11 @@ def get_trade_data(url, starttime, endtime):
 	#check whether we've already downloaded the data, to avoid hammering
 	#	the API servers too much
 	domain = url[url.find("://")+3:url[url.find("://")+3:].find("/")+url.find("://")+3]
-	prettyfilename = domain + ".csv"
+
+	prettyfilename = domain
+	if (endtime != 0):
+		prettyfilename += "-" + str(starttime) + "-" + str(endtime)
+	prettyfilename += ".csv"
 
 	fileexists = True
 	try:
@@ -69,7 +72,7 @@ def get_trade_data(url, starttime, endtime):
 		fileexists = False
 
 	if not fileexists:
-		if (starttime != 0 and endtime != 0):
+		if (endtime != 0):
 			url = url % (starttime, endtime)
 
 		req = urllib2.Request(url)
@@ -98,8 +101,6 @@ def get_tradecount(trades):
 	#	are interspersed with trades with another timestamp
 	tradecount = {}
 	for trade in trades:
-		#trade = BitcoinchartsTrade(tradestr)
-
 		if trade.gettime() != prevtime:
 			if not trade.gettime() in tradecount:
 				tradecount[trade.gettime()] = 0
@@ -110,12 +111,36 @@ def get_tradecount(trades):
 
 	return tradecount
 
+def pretty_timestamp(timestamp):
+	return time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(timestamp)))
+
 
 def main():
 	start=datetime.datetime.strptime(STARTTIMESTRING, DATEFORMAT)
 	end=datetime.datetime.strptime(ENDTIMESTRING, DATEFORMAT)
 	starttime = int(calendar.timegm(start.timetuple()))
 	endtime = int(calendar.timegm(end.timetuple()))
+
+	##CHECK MT. GOX DATA
+	mtgoxdata = get_trade_data(MTGOXAPIURL, 0, 0)
+	trades = [MtgoxTrade(a) for a in json.loads(mtgoxdata)]
+	tradecount = get_tradecount(trades)
+
+	print "Analyzing Mt. Gox data from %s to %s..." % ( pretty_timestamp(trades[0].gettime()), pretty_timestamp(trades[-1].gettime()) )
+
+	maxtps = 0
+	for key in tradecount:
+		if tradecount[key] > maxtps:
+			maxtps = tradecount[key]
+
+	print "Max. trades per second (Mt. Gox data): %d\n" % maxtps
+
+	#TEST. use the same time frame as Mt. Gox' API returns
+	#	helps to see if bitcoincharts.com and Mt. Gox agree.
+	starttime = trades[0].gettime()
+	endtime = trades[-1].gettime()
+
+	##CHECK MT. GOX DATA END
 
 	try:
 		data = get_trade_data(TRADEDATAURL, starttime, endtime)
@@ -129,7 +154,7 @@ def main():
 		print('HTTPException')
 		return
 
-	print "Analyzing trade data for the period %s to %s (UTC)..." % (STARTTIMESTRING, ENDTIMESTRING)
+	print "Analyzing trade data for the period %s to %s (UTC)..." % (pretty_timestamp(starttime), pretty_timestamp(endtime))
 
 	tradecount = get_tradecount([BitcoinchartsTrade(a) for a in data.split("\n")])
 
@@ -155,7 +180,7 @@ def main():
 	print "This happened the following times:"
 
 	for timestamp in sorted(timestamps):
-		print "%s UTC (%d trades per second)" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(timestamp))), tradecount[timestamp])
+		print "%s UTC (%d trades per second)" % (pretty_timestamp(timestamp), tradecount[timestamp])
 
 	print "Average trades per second for the entire period specified: %.2f" % (float(len(data.split("\n")))/(endtime-starttime))	
 
