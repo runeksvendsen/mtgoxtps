@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-import datetime, time, urllib2, calendar
+import datetime, time, urllib2, calendar, json
 
 TRADEDATAURL="http://bitcoincharts.com/t/trades.csv?symbol=mtgoxUSD&start=%s&end=%s"
+MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw"
 
 #date format: "YYYY-MM-DD hh:mm"
 DATEFORMAT="%Y-%m-%d %H:%M"
@@ -11,7 +12,7 @@ DATEFORMAT="%Y-%m-%d %H:%M"
 STARTTIMESTRING=	"2013-04-09 17:00"
 ENDTIMESTRING=		"2013-04-14 17:00"
 
-class Trade():
+class BitcoinchartsTrade():
 	def __init__(self, tradestring):
 		#format: "1365670789,163.400000000000,5.867343130000"
 		self.tradestring = tradestring
@@ -20,8 +21,9 @@ class Trade():
 		self.price = split[1]
 		self.volume = split[2]
 
+
 	def __str__(self):
-		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int('1365670789'))), self.price, self.volume)
+		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume)
 
 	def getprice(self):
 		return float(self.price)
@@ -32,46 +34,80 @@ class Trade():
 	def gettime(self):
 		return int(self.timestamp)
 
+class MtgoxTrade():
+	def __init__(self, tradestring):
+		#format: {"date":1365881612,"price":"105","amount":"0.15","price_int":"10500000","amount_int":"15000000","tid":"1365881612029984",
+		#			"price_currency":"USD","item":"BTC","trade_type":"bid","primary":"Y","properties":"market"}
+		self.tradestring = tradestring
+		data = json.loads(tradestring)
+		self.timestamp = str(data['date'])
+		self.price = str(data['price'])
+		self.volume = str(data['amount'])
+
+	def __str__(self):
+		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume)
+
+	def getprice(self):
+		return float(self.price)
+
+	def getvolume(self):
+		return float(self.volume)
+
+	def gettime(self):
+		return int(self.timestamp)
+
+def get_trade_data(url, starttime, endtime):
+	#check whether we've already downloaded the data, to avoid hammering
+	#	the API servers too much
+	domain = url[url.find("://")+3:url[url.find("://")+3:].find("/")+url.find("://")+3]
+	prettyfilename = domain + ".csv"
+
+	fileexists = True
+	try:
+		with open(prettyfilename): pass
+	except IOError:
+		fileexists = False
+
+	if not fileexists:
+		if (starttime != 0 and endtime != 0):
+			url = url % (starttime, endtime)
+
+		req = urllib2.Request(url)
+
+		print "Fetching trade data from %s..." % domain
+
+		res = urllib2.urlopen(req)
+
+		data = res.read()
+
+		f = open(prettyfilename, "w")
+		f.write(data)
+		f.close()
+	else:
+		f = open(prettyfilename, "r")
+		data = f.read()
+		f.close()
+
+	return data
+
+
 def main():
 	start=datetime.datetime.strptime(STARTTIMESTRING, DATEFORMAT)
 	end=datetime.datetime.strptime(ENDTIMESTRING, DATEFORMAT)
 	starttime = int(calendar.timegm(start.timetuple()))
 	endtime = int(calendar.timegm(end.timetuple()))
 
-	#check whether we've already downloaded the data, to avoid hammering
-	#	btccharts' API too much
-	fileexists = True
 	try:
-		with open("trades.csv"): pass
-	except IOError:
-		fileexists = False
-
-	if not fileexists:
-		url = TRADEDATAURL % (starttime, endtime)
-
-		req = urllib2.Request(url)
-
-		print "Fetching trade data from bitcoincharts.com..."
-		try:
-			res = urllib2.urlopen(req)
-		except urllib2.HTTPError, e:
-			print "Error:", str(e.code), str(e.reason)
-			return
-		except urllib2.URLError, e:
-			print "Error:", str(e.code), str(e.reason)
-			return
-		except httplib.HTTPException, e:
-			print('HTTPException')
-
-		data = res.read()
-
-		f = open("trades.csv", "w")
-		f.write(data)
-		f.close()
-	else:
-		f = open("trades.csv", "r")
-		data = f.read()
-		f.close()
+		data = get_trade_data(TRADEDATAURL, starttime, endtime)
+	except urllib2.HTTPError, e:
+		print "Error:", str(e.code), str(e.reason)
+		return
+	except urllib2.URLError, e:
+		print "Error:", str(e.code), str(e.reason)
+		return
+	except httplib.HTTPException, e:
+		print('HTTPException')
+		return
 
 	print "Analyzing trade data for the period %s to %s (UTC)..." % (STARTTIMESTRING, ENDTIMESTRING)
 
@@ -82,7 +118,7 @@ def main():
 	#	are interspersed with trades with another timestamp
 	tradecount = {}
 	for tradestr in data.split("\n"):
-		trade = Trade(tradestr)
+		trade = BitcoinchartsTrade(tradestr)
 
 		if trade.gettime() != prevtime:
 			if not trade.gettime() in tradecount:
