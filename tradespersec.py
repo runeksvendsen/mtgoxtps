@@ -90,6 +90,26 @@ def get_trade_data(url, starttime, endtime):
 
 	return data
 
+def get_tradecount(trades):
+	prevtime = 0
+	#let's try keeping track of all trades indepedently.
+	#	if trades appear out of order, the counting will
+	#	then still work, ie. if trades with the same timestamp
+	#	are interspersed with trades with another timestamp
+	tradecount = {}
+	for trade in trades:
+		#trade = BitcoinchartsTrade(tradestr)
+
+		if trade.gettime() != prevtime:
+			if not trade.gettime() in tradecount:
+				tradecount[trade.gettime()] = 0
+
+		tradecount[trade.gettime()] += 1
+
+		prevtime = trade.gettime()
+
+	return tradecount
+
 
 def main():
 	start=datetime.datetime.strptime(STARTTIMESTRING, DATEFORMAT)
@@ -111,22 +131,7 @@ def main():
 
 	print "Analyzing trade data for the period %s to %s (UTC)..." % (STARTTIMESTRING, ENDTIMESTRING)
 
-	prevtime = 0
-	#let's try keeping track of all trades indepedently.
-	#	if trades appear out of order, the counting will
-	#	then still work, ie. if trades with the same timestamp
-	#	are interspersed with trades with another timestamp
-	tradecount = {}
-	for tradestr in data.split("\n"):
-		trade = BitcoinchartsTrade(tradestr)
-
-		if trade.gettime() != prevtime:
-			if not trade.gettime() in tradecount:
-				tradecount[trade.gettime()] = 0
-
-		tradecount[trade.gettime()] += 1
-
-		prevtime = trade.gettime()
+	tradecount = get_tradecount([BitcoinchartsTrade(a) for a in data.split("\n")])
 
 	maxtps = 0
 	for key in tradecount:
