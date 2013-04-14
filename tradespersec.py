@@ -122,7 +122,18 @@ def main():
 	endtime = int(calendar.timegm(end.timetuple()))
 
 	##CHECK MT. GOX DATA
-	mtgoxdata = get_trade_data(MTGOXAPIURL, 0, 0)
+	try:
+		mtgoxdata = get_trade_data(MTGOXAPIURL, 0, 0)
+	except urllib2.HTTPError, e:
+		print "Error:", str(e.code), str(e.reason)
+		return
+	except urllib2.URLError, e:
+		print "Error:", str(e.code), str(e.reason)
+		return
+	except httplib.HTTPException, e:
+		print('HTTPException')
+		return
+
 	trades = [MtgoxTrade(a) for a in json.loads(mtgoxdata)]
 	tradecount = get_tradecount(trades)
 
@@ -137,8 +148,8 @@ def main():
 
 	#TEST. use the same time frame as Mt. Gox' API returns
 	#	helps to see if bitcoincharts.com and Mt. Gox agree.
-	starttime = trades[0].gettime()
-	endtime = trades[-1].gettime()
+	#starttime = trades[0].gettime()
+	#endtime = trades[-1].gettime()
 
 	##CHECK MT. GOX DATA END
 
