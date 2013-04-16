@@ -10,8 +10,8 @@ import cPickle
 DATEFORMAT="%Y-%m-%d %H:%M"
 
 #times are in UTC
-STARTTIMESTRING=	"2013-04-09 04:00"
-ENDTIMESTRING=		"2013-04-16 08:00"
+STARTTIMESTRING=	"2013-04-10 08:00"
+ENDTIMESTRING=		"2013-04-11 09:00"
 
 class MtgoxData():
 	MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw&since="
@@ -153,15 +153,7 @@ def get_tradefrequency(trades):
 	#progress
 	ln = ((sample_length/TIME_RATIO - (AVG_PRD/2)) - AVG_PRD/2) / HZ
 
-	print len(trades)
-	print ln
-	lastprogress = -1
-
 	for offset in xrange( AVG_PRD/2, sample_length/TIME_RATIO - (AVG_PRD/2), HZ):
-		progress = int((float(offset/HZ)/ln*100))
-		if (progress != lastprogress):
-			print "%d%%" % progress
-			lastprogress = progress
 		sample_time = int(trades[0].tid) + offset*TIME_RATIO
 		#OPTIMIZATION: we KNOW Mt. Gox can't handle more than 1000 TPS (more like 50)
 		#	so only loop over the next 1000*AVG_PRD/1000 trades
