@@ -3,48 +3,67 @@
 import datetime, time, urllib2, calendar, json
 
 TRADEDATAURL="http://bitcoincharts.com/t/trades.csv?symbol=mtgoxUSD&start=%s&end=%s"
-MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw"
+#MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw" #&since=1365526800000000"
 
 #date format: "YYYY-MM-DD hh:mm"
 DATEFORMAT="%Y-%m-%d %H:%M"
 
 #times are in UTC
-STARTTIMESTRING=	"2013-04-09 17:00"
-ENDTIMESTRING=		"2013-04-14 17:00"
+#STARTTIMESTRING=	"2013-04-09 17:00"
+STARTTIMESTRING=	"2013-04-16 04:00"
+ENDTIMESTRING=		"2013-04-16 07:00"
 
-class BitcoinchartsTrade():
-	def __init__(self, tradestring):
-		#format: "1365670789,163.400000000000,5.867343130000"
-		self.tradestring = tradestring
-		split = tradestring.split(",")
-		self.timestamp = split[0]
-		self.price = split[1]
-		self.volume = split[2]
+class MtgoxData():
+	MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw&since="
+
+	def __init__(self, start, end, log=True):
+		self.start = start
+		self.end = end
+		self.log = log
+		self.trades = []
+
+		if end < start:
+			raise ValueError, "End timestamp must be later than start timestamp"
+
+		if self.log:
+			url = self.MTGOXAPIURL
+			domain = url[url.find("://")+3:url[url.find("://")+3:].find("/")+url.find("://")+3]
+			print "Fetching trade data from %s..." % domain
+
+		currtid = self.start*1000000
+		while True:
+			data = self._fetch_data(currtid)
+			if (data == '[]'):
+				break
+			self.trades.extend([MtgoxTrade(a) for a in json.loads(data)])
+			currtid = self.trades[-1].tid
 
 
-	def __str__(self):
-		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume)
+	def _fetch_data(self, starttid):
+		url = self.MTGOXAPIURL
 
-	def getprice(self):
-		return float(self.price)
+		fullurl = url + str(starttid)
 
-	def getvolume(self):
-		return float(self.volume)
+		req = urllib2.Request(fullurl)
 
-	def gettime(self):
-		return int(self.timestamp)
+		res = urllib2.urlopen(req)
+		data = res.read()
+		res.close()
+
+		return data
 
 class MtgoxTrade():
 	def __init__(self, tradedict):
 		#format: {"date":1365881612,"price":"105","amount":"0.15","price_int":"10500000","amount_int":"15000000","tid":"1365881612029984",
 		#			"price_currency":"USD","item":"BTC","trade_type":"bid","primary":"Y","properties":"market"}
 		self.tradedict = tradedict
+		self.tid = str(tradedict['tid'])
 		self.timestamp = str(tradedict['date'])
 		self.price = str(tradedict['price'])
 		self.volume = str(tradedict['amount'])
 
 	def __str__(self):
-		return "%s %s %s" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume)
+		return "%s %s %s (tid: %s)" % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(int(self.timestamp))), self.price, self.volume, self.tid)
 
 	def getprice(self):
 		return float(self.price)
@@ -55,43 +74,30 @@ class MtgoxTrade():
 	def gettime(self):
 		return int(self.timestamp)
 
-def get_trade_data(url, starttime, endtime):
-	#check whether we've already downloaded the data, to avoid hammering
-	#	the API servers too much
-	domain = url[url.find("://")+3:url[url.find("://")+3:].find("/")+url.find("://")+3]
-
+def cache_data_read(domain, starttime, endtime):
 	prettyfilename = domain
+
 	if (endtime != 0):
 		prettyfilename += "-" + str(starttime) + "-" + str(endtime)
 	prettyfilename += ".csv"
 
-	fileexists = True
-	try:
-		with open(prettyfilename): pass
-	except IOError:
-		fileexists = False
-
-	if not fileexists:
-		if (endtime != 0):
-			url = url % (starttime, endtime)
-
-		req = urllib2.Request(url)
-
-		print "Fetching trade data from %s..." % domain
-
-		res = urllib2.urlopen(req)
-
-		data = res.read()
-
-		f = open(prettyfilename, "w")
-		f.write(data)
-		f.close()
-	else:
-		f = open(prettyfilename, "r")
-		data = f.read()
-		f.close()
+	f = open(prettyfilename, "r")
+	data = f.read()
+	f.close()
 
 	return data
+
+def cache_data_save(data, domain, starttime, endtime):
+	#domain = url[url.find("://")+3:url[url.find("://")+3:].find("/")+url.find("://")+3]
+	prettyfilename = domain
+
+	if (endtime != 0):
+		prettyfilename += "-" + str(starttime) + "-" + str(endtime)
+	prettyfilename += ".csv"
+
+	f = open(prettyfilename, "w")
+	f.write(data)
+	f.close()
 
 def get_tradecount(trades):
 	prevtime = 0
@@ -123,58 +129,24 @@ def main():
 
 	##CHECK MT. GOX DATA
 	try:
-		mtgoxdata = get_trade_data(MTGOXAPIURL, 0, 0)
+		goxdata = MtgoxData(starttime, endtime)
 	except urllib2.HTTPError, e:
 		print "Error:", str(e.code), str(e.reason)
 		return
 	except urllib2.URLError, e:
 		print "Error:", str(e.code), str(e.reason)
 		return
-	except httplib.HTTPException, e:
-		print('HTTPException')
-		return
 
-	trades = [MtgoxTrade(a) for a in json.loads(mtgoxdata)]
-	tradecount = get_tradecount(trades)
+	tradecount = get_tradecount(goxdata.trades)
 
-	print "Analyzing Mt. Gox data from %s to %s..." % ( pretty_timestamp(trades[0].gettime()), pretty_timestamp(trades[-1].gettime()) )
+	print "Analyzing Mt. Gox data from %s to %s (UTC)..." % ( pretty_timestamp(goxdata.trades[0].gettime()), pretty_timestamp(goxdata.trades[-1].gettime()) )
 
 	maxtps = 0
 	for key in tradecount:
 		if tradecount[key] > maxtps:
 			maxtps = tradecount[key]
 
-	print "Max. trades per second (Mt. Gox data): %d\n" % maxtps
-
-	#TEST. use the same time frame as Mt. Gox' API returns
-	#	helps to see if bitcoincharts.com and Mt. Gox agree.
-	#starttime = trades[0].gettime()
-	#endtime = trades[-1].gettime()
-
-	##CHECK MT. GOX DATA END
-
-	try:
-		data = get_trade_data(TRADEDATAURL, starttime, endtime)
-	except urllib2.HTTPError, e:
-		print "Error:", str(e.code), str(e.reason)
-		return
-	except urllib2.URLError, e:
-		print "Error:", str(e.code), str(e.reason)
-		return
-	except httplib.HTTPException, e:
-		print('HTTPException')
-		return
-
-	print "Analyzing trade data for the period %s to %s (UTC)..." % (pretty_timestamp(starttime), pretty_timestamp(endtime))
-
-	tradecount = get_tradecount([BitcoinchartsTrade(a) for a in data.split("\n")])
-
-	maxtps = 0
-	for key in tradecount:
-		if tradecount[key] > maxtps:
-			maxtps = tradecount[key]
-
-	print "Max. trades per second: %d" % maxtps
+	print "Max. trades per second: %d\n" % maxtps
 
 	#let's see how many times this limit was reached
 	limcount = 0
@@ -193,7 +165,7 @@ def main():
 	for timestamp in sorted(timestamps):
 		print "%s UTC (%d trades per second)" % (pretty_timestamp(timestamp), tradecount[timestamp])
 
-	print "Average trades per second for the entire period specified: %.2f" % (float(len(data.split("\n")))/(endtime-starttime))	
+	#print "Average trades per second for the entire period specified: %.2f" % (float(len(data.split("\n")))/(endtime-starttime))	
 
 if __name__ == "__main__":
     main()
