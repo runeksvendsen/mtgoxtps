@@ -6,9 +6,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import cPickle
 
-TRADEDATAURL="http://bitcoincharts.com/t/trades.csv?symbol=mtgoxUSD&start=%s&end=%s"
-#MTGOXAPIURL="https://data.mtgox.com/api/1/BTCUSD/trades?raw" #&since=1365526800000000"
-
 #date format: "YYYY-MM-DD hh:mm"
 DATEFORMAT="%Y-%m-%d %H:%M"
 
@@ -85,9 +82,6 @@ class MtgoxTrade():
 		return int(self.timestamp)
 
 	def pandatime(self):
-		#pt = pd.datetime.fromtimestamp(int(self.tid[0:-6]))
-		#pt.microsecond = int(self.tid[-6:])
-		#return pt
 		return pd.datetime.utcfromtimestamp(int(self.tid)/1000000.0)
 
 def cache_data_read(domain, starttime, endtime):
@@ -197,6 +191,9 @@ def main():
 	starttime = int(calendar.timegm(start.timetuple()))
 	endtime = int(calendar.timegm(end.timetuple()))
 
+	#TODO: Implement cache that loads available data from disk and extends it with new data from API
+	#			This is really just a hack to avoid banging Mt. Gox' API too much. To get fresh data
+	#			just delete the mtgox.dump file
 	fileexists = True
 	try:
 		with open("mtgox.dump"): pass
@@ -204,9 +201,9 @@ def main():
 		fileexists = False
 
 	if fileexists:
-		# to deserialize the object
+		#deserialize the object
 		with open("mtgox.dump", "rb") as input:
-			goxdata = cPickle.load(input) # protocol version is detected
+			goxdata = cPickle.load(input) #protocol version is detected
 	else:
 		try:
 			goxdata = MtgoxData(starttime, -1)
@@ -218,22 +215,22 @@ def main():
 			return
 
 	if not fileexists:
-		# to serialize the object
+		#serialize the object
 		with open("mtgox.dump", "wb") as output:
 			cPickle.dump(goxdata, output, cPickle.HIGHEST_PROTOCOL)
 
 	#goxdata.trades = goxdata.trades[:10000]
 
-	print "Calculating trade frequency..."
+	print "Calculating trade frequency from %d transactions..." % (len(goxdata.trades))
 	trade_freq = get_tradefrequency(goxdata.trades)
 
-	s = pd.Series([float(a.price) for a in goxdata.trades], index=[a.pandatime() for a in goxdata.trades])
+	sPrice = pd.Series([float(a.price) for a in goxdata.trades], index=[a.pandatime() for a in goxdata.trades])
 	sTPS = pd.Series([a['tps'] for a in trade_freq], index=[tid_to_datetime(a['time']) for a in trade_freq])
 
 	fig = plt.figure()
-	plot1 = sTPS.plot(secondary_y=True, label="Transactions per second", color='b', marker='', linestyle='-')
+	plot1 = sTPS.plot(label="Transactions per second", color='b', marker='', linestyle='-', aa=True)
 	plt.legend()
-	plot2 = s.plot(label="Price", color='r', marker='', linestyle='-')
+	plot2 = sPrice.plot(secondary_y=True, label="Price (USD)", color='r', marker='', linestyle='-', aa=True)
 
 	plt.show()
 
